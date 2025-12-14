@@ -1,49 +1,54 @@
-# capture_faces.py
 import cv2
 import os
 
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+RAW_DIR = "known_faces_raw"
+MAX_IMAGES = 50
 
-name = input("Enter your name: ").strip()
+face_cascade = cv2.CascadeClassifier(
+    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+)
+
+name = input("Enter person name: ").strip()
 if not name:
-    print("❌ Please enter a valid name")
+    print("Invalid name")
     exit()
 
-path = os.path.join("known_faces", name)
-os.makedirs(path, exist_ok=True)
+person_dir = os.path.join(RAW_DIR, name)
+os.makedirs(person_dir, exist_ok=True)
+
+count = len(os.listdir(person_dir))
+if count >= MAX_IMAGES:
+    print("Already reached 50 images.")
+    exit()
 
 cap = cv2.VideoCapture(0)
-count = len(os.listdir(path))
-print("📸 Press SPACE to capture | ESC to stop (captures cropped faces if detected)")
+print("Press SPACE to capture | ESC to exit")
 
 while True:
     ret, frame = cap.read()
     if not ret:
         break
-    display = frame.copy()
+
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     faces = face_cascade.detectMultiScale(gray, 1.1, 4)
-    for (x, y, w, h) in faces:
-        cv2.rectangle(display, (x, y), (x+w, y+h), (0,255,0), 2)
 
-    cv2.imshow("Capture - Press SPACE", display)
+    for (x, y, w, h) in faces:
+        cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+
+    cv2.imshow("Capture RAW Faces", frame)
     key = cv2.waitKey(1)
-    if key % 256 == 27:  # ESC
+
+    if key == 27:
         break
-    elif key % 256 == 32:  # SPACE
-        count += 1
-        filename = f"{path}/{count}.jpg"
-        # crop if face found, else save full frame
-        if len(faces) > 0:
-            x, y, w, h = faces[0]
-            face = frame[y:y+h, x:x+w]
-            cv2.imwrite(filename, face)
-        else:
-            cv2.imwrite(filename, frame)
-        print(f"✅ Saved: {filename}")
-        if count >= 50:
-            print("✅ Captured 50 images. Exiting...")
+
+    elif key == 32 and len(faces) > 0:
+        if count >= MAX_IMAGES:
+            print("Reached max limit (50).")
             break
+
+        count += 1
+        cv2.imwrite(os.path.join(person_dir, f"{count}.jpg"), frame)
+        print(f"Saved RAW image {count}/50")
 
 cap.release()
 cv2.destroyAllWindows()
