@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import pandas as pd
 import os
+import io
 from datetime import datetime
 from tensorflow.keras.models import load_model
 from sklearn.metrics.pairwise import cosine_similarity
@@ -10,10 +11,12 @@ from sklearn.metrics.pairwise import cosine_similarity
 IMG_SIZE = 100
 THRESHOLD = 0.5
 
+# Load model and data
 model = load_model("face_embedding_model.keras")
 embeddings = np.load("embeddings/embeddings.npy")
 names = np.load("embeddings/names.npy")
 
+# Face detector
 face_cascade = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
@@ -126,10 +129,14 @@ elif menu == "Download Attendance":
             mime="text/csv"
         )
 
-        # Excel download
+        # Excel download (FIXED)
+        excel_buffer = io.BytesIO()
+        df.to_excel(excel_buffer, index=False, engine="openpyxl")
+        excel_buffer.seek(0)
+
         st.download_button(
             label="⬇️ Download Excel",
-            data=df.to_excel(excel_name, index=False),
+            data=excel_buffer,
             file_name=excel_name,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
