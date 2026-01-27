@@ -3,7 +3,7 @@ import os
 
 RAW_DIR = "known_faces_raw"
 PROC_DIR = "known_faces_processed"
-IMG_SIZE = 100
+IMG_SIZE = 224
 
 face_cascade = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
@@ -34,11 +34,11 @@ for person in os.listdir(RAW_DIR):
             continue
 
         x, y, w, h = faces[0]
-        face = gray[y:y+h, x:x+w]
+        face = img[y:y+h, x:x+w]
         face = cv2.resize(face, (IMG_SIZE, IMG_SIZE))
 
         cv2.imwrite(os.path.join(proc_person_dir, img_name), face)
 
-    print(f"Processed images for {person}")
+    print(f"Processed faces for {person}")
 
 print("Preprocessing completed.")

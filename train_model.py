@@ -1,59 +1,76 @@
-import os
-import cv2
-import numpy as np
+import tensorflow as tf
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Input
+from tensorflow.keras.layers import Dense, Dropout, GlobalAveragePooling2D, Input
+from tensorflow.keras.applications import MobileNetV2
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.optimizers import Adam
-from sklearn.preprocessing import normalize
+import json
 
-DATA_DIR = "known_faces_processed"
-IMG_SIZE = 100
-EMB_SIZE = 128
+DATASET_DIR = "dataset"
+IMG_SIZE = (224, 224)
+BATCH_SIZE = 16
+EPOCHS = 20
+MODEL_PATH = "face_recognition_mobilenetv2.h5"
 
-X, names = [], []
+datagen = ImageDataGenerator(
+    rescale=1./255,
+    validation_split=0.2
+)
 
-for person in sorted(os.listdir(DATA_DIR)):
-    person_dir = os.path.join(DATA_DIR, person)
-    if not os.path.isdir(person_dir):
-        continue
+train_gen = datagen.flow_from_directory(
+    DATASET_DIR,
+    target_size=IMG_SIZE,
+    batch_size=BATCH_SIZE,
+    class_mode="categorical",
+    subset="training"
+)
 
-    for img_name in os.listdir(person_dir):
-        img_path = os.path.join(person_dir, img_name)
-        img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+val_gen = datagen.flow_from_directory(
+    DATASET_DIR,
+    target_size=IMG_SIZE,
+    batch_size=BATCH_SIZE,
+    class_mode="categorical",
+    subset="validation"
+)
 
-        if img is None:
-            continue
+num_classes = train_gen.num_classes
 
-        img = img.astype("float32") / 255.0
-        img = img.reshape(IMG_SIZE, IMG_SIZE, 1)
+with open("class_indices.json", "w") as f:
+    json.dump(train_gen.class_indices, f)
 
-        X.append(img)
-        names.append(person)
+base_model = MobileNetV2(
+    weights="imagenet",
+    include_top=False,
+    input_shape=(224, 224, 3)
+)
 
-X = np.array(X)
+# 🔓 Fine-tune last 30 layers
+base_model.trainable = True
+for layer in base_model.layers[:-30]:
+    layer.trainable = False
 
-# Embedding CNN
-inp = Input(shape=(IMG_SIZE, IMG_SIZE, 1))
-x = Conv2D(32, 3, activation="relu")(inp)
-x = MaxPooling2D()(x)
-x = Conv2D(64, 3, activation="relu")(x)
-x = MaxPooling2D()(x)
-x = Flatten()(x)
+inputs = Input(shape=(224, 224, 3))
+x = base_model(inputs)
+x = GlobalAveragePooling2D()(x)
 x = Dense(256, activation="relu")(x)
-emb = Dense(EMB_SIZE)(x)
+x = Dropout(0.5)(x)
+outputs = Dense(num_classes, activation="softmax")(x)
 
-model = Model(inp, emb)
-model.compile(optimizer=Adam(0.001), loss="mse")
+model = Model(inputs, outputs)
 
-# Self-supervised embedding stabilization
-model.fit(X, model.predict(X), epochs=10, batch_size=16)
+model.compile(
+    optimizer=Adam(learning_rate=1e-5),
+    loss="categorical_crossentropy",
+    metrics=["accuracy"]
+)
 
-embeddings = model.predict(X)
-embeddings = normalize(embeddings)
+model.summary()
 
-os.makedirs("embeddings", exist_ok=True)
-np.save("embeddings/embeddings.npy", embeddings)
-np.save("embeddings/names.npy", np.array(names))
+model.fit(
+    train_gen,
+    validation_data=val_gen,
+    epochs=EPOCHS
+)
 
-model.save("face_embedding_model.keras")
-print("Embedding model trained and saved.")
+model.save(MODEL_PATH)
+print("Model saved:", MODEL_PATH)
